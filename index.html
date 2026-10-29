@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Spending">
+<meta name="theme-color" content="#10b981"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Spending Tracker</title><style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#111;--mu:#666;--ac:#10b981;--bd:#ddd;color-scheme:light dark}
+@media(prefers-color-scheme:dark){:root{--bg:#0e0f12;--card:#1a1c21;--tx:#eee;--mu:#999;--bd:#333}}
+*{box-sizing:border-box}body{margin:0;font:16px -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 12px) calc(env(safe-area-inset-bottom) + 24px) calc(env(safe-area-inset-left) + 12px)}
+.card{background:var(--card);border-radius:16px;padding:14px;margin:10px 0}h1{font-size:22px;margin:6px 0}h2{font-size:17px;margin:0 0 8px}
+input,select,button{font:inherit;font-size:17px;min-height:48px;border-radius:12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:0 12px;width:100%}
+button{background:var(--ac);color:#fff;border:0;font-weight:600}button.s{background:transparent;color:var(--ac);border:1px solid var(--ac);width:auto}button.d{background:#ef4444}
+.row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1}#amt{font-size:32px;min-height:64px;text-align:center}
+.mon{display:flex;align-items:center;justify-content:space-between}.mon button{width:56px}.big{font-size:34px;font-weight:700}.mu{color:var(--mu);font-size:14px}
+.bar{height:12px;background:var(--bd);border-radius:6px;overflow:hidden}.bar div{height:100%;background:var(--ac)}
+.e{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--bd);gap:8px}.e:last-child{border:0}
+.day{font-weight:600;margin-top:10px;color:var(--mu);font-size:14px}.chip{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--bd);border-radius:20px;margin:3px}
+.chip b{cursor:pointer;color:#ef4444}svg text{fill:var(--tx);font-size:13px}dialog{border:0;border-radius:16px;background:var(--card);color:var(--tx);width:92%}
+</style></head><body>
+<h1>💵 Spending</h1>
+<div class="card"><input id="amt" type="number" inputmode="decimal" step="0.01" placeholder="$0.00">
+<div class="row"><select id="cat"></select><input id="date" type="date"></div>
+<input id="note" placeholder="Note (optional)"><div class="row"><button id="add">Add expense</button></div></div>
+<div class="card"><div class="mon"><button class="s" id="prev">‹</button><h2 id="mlab"></h2><button class="s" id="next">›</button></div>
+<div class="big" id="tot"></div><div id="bud"></div><svg id="chart" width="100%"></svg></div>
+<div class="card"><h2>Entries</h2><div id="list"></div></div>
+<div class="card"><h2>Settings</h2><label class="mu">Monthly budget</label><input id="budget" type="number" inputmode="decimal" placeholder="None">
+<label class="mu">Categories</label><div id="cats"></div><div class="row"><input id="newcat" placeholder="New category"><button class="s" id="addcat">Add</button></div>
+<div class="row"><button class="s" id="csv">Export CSV</button><button class="s" id="bak">Backup JSON</button></div>
+<div class="row"><button class="s" id="rest">Restore JSON</button><input type="file" id="file" accept=".json,application/json" hidden></div></div>
+<dialog id="dlg"><h2>Edit entry</h2><input id="eamt" type="number" inputmode="decimal" step="0.01"><div class="row"><select id="ecat"></select><input id="edate" type="date"></div><input id="enote">
+<div class="row"><button class="d" id="edel">Delete</button><button class="s" id="ecan">Cancel</button><button id="esave">Save</button></div></dialog>
+<script>
+const $=id=>document.getElementById(id),K='spending-tracker-v1';
+let S=JSON.parse(localStorage.getItem(K)||'null')||{entries:[],cats:['Food','Gas','Groceries','Bills','Shopping','Entertainment','Business','Other'],budget:0};
+const save=()=>localStorage.setItem(K,JSON.stringify(S));
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+let M=today().slice(0,7),editId=null;const fm=n=>'$'+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function opts(){const h=S.cats.map(c=>`<option>${esc(c)}</option>`).join('');$('cat').innerHTML=h;$('ecat').innerHTML=h}
+function render(){opts();$('date').value||($('date').value=today());
+const [y,m]=M.split('-');$('mlab').textContent=new Date(y,m-1).toLocaleString(undefined,{month:'long',year:'numeric'});
+const es=S.entries.filter(e=>e.date.startsWith(M)).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+const t=es.reduce((s,e)=>s+e.amount,0);$('tot').textContent=fm(t);
+$('bud').innerHTML=S.budget?`<div class="mu">${fm(t)} of ${fm(S.budget)} budget · ${fm(Math.max(0,S.budget-t))} left</div><div class="bar"><div style="width:${Math.min(100,t/S.budget*100)}%;background:${t>S.budget?'#ef4444':'var(--ac)'}"></div></div>`:'';
+const by={};es.forEach(e=>by[e.cat]=(by[e.cat]||0)+e.amount);const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]),mx=rows[0]?.[1]||1;
+$('chart').setAttribute('height',rows.length*30+6);$('chart').innerHTML=rows.map(([c,v],i)=>`<text x="0" y="${i*30+20}">${esc(c)}</text><rect x="110" y="${i*30+6}" rx="5" height="20" width="${Math.max(2,v/mx*150)}" fill="#10b981"/><text x="${116+v/mx*150}" y="${i*30+20}">${fm(v)}</text>`).join('');
+let h='',last='';es.forEach(e=>{if(e.date!==last){last=e.date;h+=`<div class="day">${new Date(e.date+'T12:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</div>`}
+h+=`<div class="e" data-id="${e.id}"><div><div>${esc(e.cat)}</div><div class="mu">${esc(e.note||'')}</div></div><b>${fm(e.amount)}</b></div>`});
+$('list').innerHTML=h||'<div class="mu">No entries this month.</div>';
+$('cats').innerHTML=S.cats.map((c,i)=>`<span class="chip">${esc(c)} <b data-i="${i}">✕</b></span>`).join('');$('budget').value=S.budget||''}
+$('add').onclick=()=>{const a=parseFloat($('amt').value);if(!(a>0))return $('amt').focus();
+S.entries.push({id:Date.now(),amount:Math.round(a*100)/100,cat:$('cat').value,note:$('note').value.trim(),date:$('date').value||today()});save();
+M=($('date').value||today()).slice(0,7);$('amt').value='';$('note').value='';render()};
+const shift=d=>{let [y,m]=M.split('-').map(Number);m+=d;if(m<1){m=12;y--}if(m>12){m=1;y++}M=y+'-'+String(m).padStart(2,'0');render()};
+$('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
+$('list').onclick=ev=>{const r=ev.target.closest('.e');if(!r)return;const e=S.entries.find(x=>x.id==r.dataset.id);editId=e.id;
+$('eamt').value=e.amount;$('ecat').value=e.cat;$('edate').value=e.date;$('enote').value=e.note;$('dlg').showModal()};
+$('esave').onclick=()=>{const e=S.entries.find(x=>x.id==editId),a=parseFloat($('eamt').value);if(a>0)e.amount=a;e.cat=$('ecat').value;e.date=$('edate').value||e.date;e.note=$('enote').value;save();$('dlg').close();render()};
+$('edel').onclick=()=>{if(confirm('Delete this entry?')){S.entries=S.entries.filter(x=>x.id!=editId);save();$('dlg').close();render()}};$('ecan').onclick=()=>$('dlg').close();
+$('budget').onchange=()=>{S.budget=parseFloat($('budget').value)||0;save();render()};
+$('addcat').onclick=()=>{const c=$('newcat').value.trim();if(c&&!S.cats.includes(c)){S.cats.push(c);save()}$('newcat').value='';render()};
+$('cats').onclick=ev=>{const i=ev.target.dataset.i;if(i!=null&&S.cats.length>1&&confirm('Remove category "'+S.cats[i]+'"? Existing entries keep it.')){S.cats.splice(i,1);save();render()}};
+const dl=(n,t,ty)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:ty}));a.download=n;a.click()};
+$('csv').onclick=()=>dl('spending.csv','Date,Amount,Category,Note\n'+S.entries.map(e=>[e.date,e.amount.toFixed(2),e.cat,e.note].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv');
+$('bak').onclick=()=>dl('spending-backup-'+today()+'.json',JSON.stringify(S,null,1),'application/json');
+$('rest').onclick=()=>$('file').click();$('file').onchange=async()=>{try{const d=JSON.parse(await $('file').files[0].text());if(!Array.isArray(d.entries))throw 0;if(confirm('Replace current data with backup ('+d.entries.length+' entries)?')){S={cats:S.cats,budget:0,...d};save();render()}}catch{alert('Not a valid backup file')}};
+render();if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
